@@ -122,6 +122,81 @@
       color: #666;
       line-height: 1.5;
     }
+
+    .file-upload-area {
+      border: 2px dashed #333;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 8px;
+    }
+
+    .file-upload-area:hover,
+    .file-upload-area.dragover {
+      border-color: #7c83ff;
+      background: #1a1a2e;
+    }
+
+    .file-upload-label {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .tone-status {
+      text-align: center;
+      font-size: 12px;
+      min-height: 16px;
+      margin-bottom: 4px;
+    }
+
+    .tone-preview {
+      background: #1a1a2e;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 10px;
+      margin-top: 4px;
+    }
+
+    .tone-preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: #7c83ff;
+    }
+
+    .remove-tone {
+      background: none;
+      border: 1px solid #444;
+      color: #888;
+      border-radius: 4px;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .remove-tone:hover {
+      border-color: #ff4444;
+      color: #ff4444;
+    }
+
+    .tone-preview-text {
+      font-size: 11px;
+      color: #888;
+      line-height: 1.4;
+      max-height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
   </style>
 </head>
 <body>
@@ -152,6 +227,25 @@
 
   <button class="save" id="saveBtn">Save Settings</button>
   <div class="status" id="status"></div>
+
+  <div class="divider"></div>
+
+  <label>Tone of Voice</label>
+  <p class="info" style="margin-bottom: 8px;">
+    Upload a .md or .txt file describing your writing style.
+  </p>
+  <div class="file-upload-area" id="dropZone">
+    <input type="file" id="toneFile" accept=".md,.txt,.markdown" style="display:none">
+    <span class="file-upload-label" id="fileLabel">Drop file here or click to browse</span>
+  </div>
+  <div class="tone-status" id="toneStatus"></div>
+  <div id="tonePreview" class="tone-preview" style="display:none">
+    <div class="tone-preview-header">
+      <span id="toneFileName"></span>
+      <button class="remove-tone" id="removeTone" title="Remove">x</button>
+    </div>
+    <div class="tone-preview-text" id="tonePreviewText"></div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

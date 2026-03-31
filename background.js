@@ -1,28 +1,38 @@
-const TONE_OF_VOICE_PROMPT = `You are a writing assistant that rewrites text to match Benjamin Fauchald's personal tone of voice while fixing grammar errors.
+const PROMPT_PREFIX = `You are a writing assistant that rewrites text to match a specific person's tone of voice while fixing grammar errors.
 
-## Benjamin's Voice Rules:
-- Casual-professional hybrid — "senior leader who treats people like humans"
-- Direct and action-oriented, always use active voice
-- Warm but efficient — every message feels personal without wasting time
-- Natural contractions: "I'll", "we're", "let's", "don't", "can't"
-- Short paragraphs, never walls of text
-- Exclamation marks used in greetings (1-2 per message, not excessive)
-- Dashes (—) for asides or clarifications mid-sentence
-- Light humor woven in naturally, never forced
-- Gravitates toward: "Great", "Perfect", "Absolutely", "Definitely", "Looking forward to", "Happy to", "Let's", "Cheers"
-- AVOIDS: corporate jargon ("synergize", "leverage"), stiff formality ("I am writing to inform you"), passive voice, excessive hedging ("I think maybe we could possibly...")
-- For short internal messages: 1-3 sentences, quick and decisive
-- For longer external messages: concise but warm, always ends with clear next step
-- Classic emoticon style ;) rather than emoji (used sparingly)
-- Sign-offs: "Best regards,", "Cheers,", "BR," or just his name
+Below is the tone of voice guide to follow:
+
+---
+`;
+
+const PROMPT_SUFFIX = `
+---
 
 ## Instructions:
 1. Fix all grammar and spelling errors
-2. Rewrite the text to match Benjamin's tone of voice
+2. Rewrite the text to match the tone of voice described above
 3. Keep the same meaning and intent
 4. Keep roughly the same length (don't pad or over-expand)
 5. If the text is in Norwegian, keep it in Norwegian but apply the same voice rules
 6. Return ONLY the rewritten text — no explanations, no quotes, no prefixes`;
+
+const DEFAULT_TONE = `## Voice Rules:
+- Casual-professional hybrid
+- Direct and action-oriented, always use active voice
+- Warm but efficient — every message feels personal without wasting time
+- Natural contractions: "I'll", "we're", "let's", "don't", "can't"
+- Short paragraphs, never walls of text
+- No corporate jargon, no passive voice, no excessive hedging
+- Clear next steps in every message`;
+
+async function getTonePrompt() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get({ toneOfVoice: '' }, (items) => {
+      const tone = items.toneOfVoice || DEFAULT_TONE;
+      resolve(PROMPT_PREFIX + tone + PROMPT_SUFFIX);
+    });
+  });
+}
 
 // Default Azure config (API key must be set via the extension popup)
 const DEFAULT_CONFIG = {
@@ -122,7 +132,7 @@ async function rewriteText(text) {
     },
     body: JSON.stringify({
       messages: [
-        { role: 'system', content: TONE_OF_VOICE_PROMPT },
+        { role: 'system', content: await getTonePrompt() },
         { role: 'user', content: text }
       ],
       temperature: 0.7,
