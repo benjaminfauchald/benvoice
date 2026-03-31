@@ -2,6 +2,7 @@
 let activeElement = null;
 let selectionStart = 0;
 let selectionEnd = 0;
+let cachedSelectedText = '';
 
 // Listen for focus on editable elements
 document.addEventListener('focusin', (e) => {
@@ -10,10 +11,39 @@ document.addEventListener('focusin', (e) => {
   }
 });
 
+// Capture selection state BEFORE right-click opens context menu
+// (right-click can blur/deselect, so we snapshot on mousedown)
+document.addEventListener('mousedown', (e) => {
+  if (e.button === 2) { // right-click
+    cacheSelection();
+  }
+});
+
+// Also cache on any selection change inside editable fields
+document.addEventListener('selectionchange', () => {
+  if (activeElement && isEditable(activeElement)) {
+    cacheSelection();
+  }
+});
+
+function cacheSelection() {
+  if (!activeElement) return;
+
+  if (activeElement.isContentEditable) {
+    const sel = window.getSelection();
+    cachedSelectedText = sel?.toString() || '';
+  } else {
+    selectionStart = activeElement.selectionStart;
+    selectionEnd = activeElement.selectionEnd;
+    cachedSelectedText = activeElement.value.substring(selectionStart, selectionEnd);
+  }
+}
+
 // Keyboard shortcut: Ctrl+Shift+R (Cmd+Shift+R on Mac)
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
     e.preventDefault();
+    cacheSelection();
     triggerRewrite();
   }
 });
@@ -22,18 +52,19 @@ document.addEventListener('keydown', (e) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
     case 'getSelectedText':
-      sendResponse({ text: getSelectedText() });
-      break;
+      sendResponse({ text: cachedSelectedText });
+      return false;
     case 'replaceText':
       replaceSelectedText(message.text);
       hideOverlay();
-      break;
+      showOverlay('success', 'Text rewritten!');
+      return false;
     case 'showLoading':
       showOverlay('loading');
-      break;
+      return false;
     case 'showError':
       showOverlay('error', message.error);
-      break;
+      return false;
   }
 });
 
@@ -46,53 +77,32 @@ function isEditable(el) {
   return false;
 }
 
-function getSelectedText() {
-  if (!activeElement) return '';
-
-  if (activeElement.isContentEditable) {
-    const selection = window.getSelection();
-    return selection?.toString() || '';
-  }
-
-  // textarea or input
-  selectionStart = activeElement.selectionStart;
-  selectionEnd = activeElement.selectionEnd;
-  return activeElement.value.substring(selectionStart, selectionEnd);
-}
-
 function replaceSelectedText(newText) {
   if (!activeElement) return;
 
   if (activeElement.isContentEditable) {
-    const selection = window.getSelection();
-    if (selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
-      range.insertNode(document.createTextNode(newText));
-      // Collapse selection to end
-      selection.collapseToEnd();
-    }
-    // Trigger input event for frameworks (React, Vue, etc.)
+    // For contentEditable, replace the cached selection
+    activeElement.focus();
+    // Use execCommand for best undo support in contentEditable
+    document.execCommand('insertText', false, newText);
     activeElement.dispatchEvent(new Event('input', { bubbles: true }));
     return;
   }
 
   // textarea or input
+  activeElement.focus();
   const before = activeElement.value.substring(0, selectionStart);
   const after = activeElement.value.substring(selectionEnd);
   activeElement.value = before + newText + after;
 
-  // Set cursor to end of replaced text
   const newCursorPos = selectionStart + newText.length;
   activeElement.setSelectionRange(newCursorPos, newCursorPos);
 
-  // Trigger input event for frameworks
   activeElement.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 async function triggerRewrite() {
-  const text = getSelectedText();
-  if (!text) {
+  if (!cachedSelectedText) {
     showOverlay('error', 'No text selected. Select text in a text field first.');
     return;
   }
@@ -100,10 +110,11 @@ async function triggerRewrite() {
   showOverlay('loading');
 
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'rewrite', text });
+    const response = await chrome.runtime.sendMessage({ action: 'rewrite', text: cachedSelectedText });
     if (response.success) {
       replaceSelectedText(response.text);
       hideOverlay();
+      showOverlay('success', 'Text rewritten!');
     } else {
       showOverlay('error', response.error);
     }
@@ -115,32 +126,42 @@ async function triggerRewrite() {
 // --- Overlay UI ---
 
 let overlay = null;
+let overlayTimeout = null;
 
 function showOverlay(type, message) {
   hideOverlay();
 
   overlay = document.createElement('div');
   overlay.id = 'benvoice-overlay';
+  overlay.className = `benvoice-${type}`;
 
   if (type === 'loading') {
     overlay.innerHTML = `
       <div class="benvoice-spinner"></div>
-      <span>Rewriting...</span>
+      <span class="benvoice-text">Rewriting in your voice...</span>
     `;
-    overlay.classList.add('benvoice-loading');
   } else if (type === 'error') {
     overlay.innerHTML = `
       <span class="benvoice-error-icon">!</span>
-      <span>${escapeHtml(message)}</span>
+      <span class="benvoice-text">${escapeHtml(message)}</span>
     `;
-    overlay.classList.add('benvoice-error');
-    setTimeout(hideOverlay, 4000);
+    overlayTimeout = setTimeout(hideOverlay, 5000);
+  } else if (type === 'success') {
+    overlay.innerHTML = `
+      <span class="benvoice-success-icon">&#10003;</span>
+      <span class="benvoice-text">${escapeHtml(message)}</span>
+    `;
+    overlayTimeout = setTimeout(hideOverlay, 2500);
   }
 
   document.body.appendChild(overlay);
 }
 
 function hideOverlay() {
+  if (overlayTimeout) {
+    clearTimeout(overlayTimeout);
+    overlayTimeout = null;
+  }
   if (overlay) {
     overlay.remove();
     overlay = null;

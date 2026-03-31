@@ -4,46 +4,76 @@
   right: 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 20px;
-  border-radius: 10px;
+  gap: 12px;
+  padding: 14px 24px;
+  border-radius: 12px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 500;
   z-index: 2147483647;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  animation: benvoice-slide-in 0.2s ease-out;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  animation: benvoice-slide-in 0.25s ease-out;
+  pointer-events: none;
 }
 
 #benvoice-overlay.benvoice-loading {
   background: #1a1a2e;
   color: #e0e0e0;
+  border: 1px solid #7c83ff44;
 }
 
 #benvoice-overlay.benvoice-error {
   background: #2e1a1a;
   color: #ff8a8a;
+  border: 1px solid #ff444444;
+}
+
+#benvoice-overlay.benvoice-success {
+  background: #1a2e1a;
+  color: #8aff8a;
+  border: 1px solid #44ff4444;
+}
+
+.benvoice-text {
+  max-width: 320px;
+  line-height: 1.4;
 }
 
 .benvoice-spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid rgba(255, 255, 255, 0.15);
   border-top-color: #7c83ff;
   border-radius: 50%;
   animation: benvoice-spin 0.6s linear infinite;
+  flex-shrink: 0;
 }
 
 .benvoice-error-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   background: #ff4444;
   color: white;
   border-radius: 50%;
   font-weight: bold;
-  font-size: 12px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.benvoice-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: #44bb44;
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
@@ -54,7 +84,7 @@
 @keyframes benvoice-slide-in {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;

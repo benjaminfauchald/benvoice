@@ -41,30 +41,41 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Handle context menu click
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+// Handle context menu click — no nested async callbacks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'benvoice-rewrite') {
-    chrome.tabs.sendMessage(tab.id, { action: 'getSelectedText' }, async (response) => {
-      if (chrome.runtime.lastError || !response?.text) {
-        chrome.tabs.sendMessage(tab.id, {
-          action: 'showError',
-          error: 'No text selected. Select text in a text field first.'
-        });
-        return;
-      }
-
-      try {
-        chrome.tabs.sendMessage(tab.id, { action: 'showLoading' });
-        const rewritten = await rewriteText(response.text);
-        chrome.tabs.sendMessage(tab.id, { action: 'replaceText', text: rewritten });
-      } catch (err) {
-        chrome.tabs.sendMessage(tab.id, { action: 'showError', error: err.message });
-      }
-    });
+    handleContextMenuRewrite(info, tab);
   }
 });
 
-// Handle messages from content script (keyboard shortcut / floating button)
+async function handleContextMenuRewrite(info, tab) {
+  // First, ask the content script for the selected text (captures selection state)
+  let selectedText = '';
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, { action: 'getSelectedText' });
+    selectedText = response?.text || '';
+  } catch (e) {
+    // Content script not loaded or no response
+  }
+
+  if (!selectedText) {
+    chrome.tabs.sendMessage(tab.id, {
+      action: 'showError',
+      error: 'No text selected. Select text in a text field, then right-click.'
+    }).catch(() => {});
+    return;
+  }
+
+  try {
+    chrome.tabs.sendMessage(tab.id, { action: 'showLoading' }).catch(() => {});
+    const rewritten = await rewriteText(selectedText);
+    chrome.tabs.sendMessage(tab.id, { action: 'replaceText', text: rewritten }).catch(() => {});
+  } catch (err) {
+    chrome.tabs.sendMessage(tab.id, { action: 'showError', error: err.message }).catch(() => {});
+  }
+}
+
+// Handle messages from content script (keyboard shortcut)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'rewrite') {
     rewriteText(message.text)
