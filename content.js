@@ -3,19 +3,27 @@ let activeElement = null;
 let selectionStart = 0;
 let selectionEnd = 0;
 let cachedSelectedText = '';
+const isTopFrame = (window === window.top);
+
+console.log('[BenVoice CS] Content script loaded, isTopFrame:', isTopFrame, 'URL:', location.href.substring(0, 80));
 
 // Listen for focus on editable elements
 document.addEventListener('focusin', (e) => {
   if (isEditable(e.target)) {
     activeElement = e.target;
+    console.log('[BenVoice CS] Active element set:', e.target.tagName, e.target.isContentEditable ? 'contentEditable' : '');
   }
 });
 
 // Capture selection state BEFORE right-click opens context menu
-// (right-click can blur/deselect, so we snapshot on mousedown)
+// AND proactively send it to background so it's ready when context menu fires
 document.addEventListener('mousedown', (e) => {
   if (e.button === 2) { // right-click
     cacheSelection();
+    if (cachedSelectedText) {
+      console.log('[BenVoice CS] Right-click, sending cached text to BG:', JSON.stringify(cachedSelectedText).substring(0, 80));
+      chrome.runtime.sendMessage({ action: 'cacheText', text: cachedSelectedText }).catch(() => {});
+    }
   }
 });
 
@@ -50,20 +58,44 @@ document.addEventListener('keydown', (e) => {
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[BenVoice CS] Message received:', message.action, 'isTopFrame:', isTopFrame);
+
   switch (message.action) {
     case 'getSelectedText':
-      sendResponse({ text: cachedSelectedText });
+      // Only the frame with text should respond
+      if (cachedSelectedText) {
+        console.log('[BenVoice CS] Responding with text:', JSON.stringify(cachedSelectedText).substring(0, 80));
+        sendResponse({ text: cachedSelectedText });
+      } else {
+        sendResponse({ text: '' });
+      }
       return false;
+
     case 'replaceText':
-      replaceSelectedText(message.text);
-      hideOverlay();
-      showOverlay('success', 'Text rewritten!');
+      // Only the frame that has the active element should replace
+      if (activeElement) {
+        console.log('[BenVoice CS] Replacing text, length:', message.text?.length);
+        replaceSelectedText(message.text);
+      }
+      // Overlay always in top frame
+      if (isTopFrame) {
+        hideOverlay();
+        showOverlay('success', 'Text rewritten!');
+      }
       return false;
+
     case 'showLoading':
-      showOverlay('loading');
+      if (isTopFrame) {
+        console.log('[BenVoice CS] Showing loading overlay');
+        showOverlay('loading');
+      }
       return false;
+
     case 'showError':
-      showOverlay('error', message.error);
+      if (isTopFrame) {
+        console.log('[BenVoice CS] Showing error:', message.error);
+        showOverlay('error', message.error);
+      }
       return false;
   }
 });
@@ -81,10 +113,18 @@ function replaceSelectedText(newText) {
   if (!activeElement) return;
 
   if (activeElement.isContentEditable) {
-    // For contentEditable, replace the cached selection
     activeElement.focus();
-    // Use execCommand for best undo support in contentEditable
-    document.execCommand('insertText', false, newText);
+    // Restore selection if lost
+    const sel = window.getSelection();
+    if (sel.toString()) {
+      document.execCommand('insertText', false, newText);
+    } else {
+      // Selection was lost (e.g. context menu closed it) — replace full content as fallback
+      // This shouldn't happen since we cache, but just in case
+      activeElement.focus();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, newText);
+    }
     activeElement.dispatchEvent(new Event('input', { bubbles: true }));
     return;
   }
@@ -123,12 +163,15 @@ async function triggerRewrite() {
   }
 }
 
-// --- Overlay UI ---
+// --- Overlay UI (only rendered in top frame) ---
 
 let overlay = null;
 let overlayTimeout = null;
 
 function showOverlay(type, message) {
+  if (!isTopFrame) return; // overlays only in top frame
+
+  console.log('[BenVoice CS] showOverlay:', type, message);
   hideOverlay();
 
   overlay = document.createElement('div');

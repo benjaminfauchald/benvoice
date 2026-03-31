@@ -41,42 +41,61 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Handle context menu click — no nested async callbacks
+// Text cached by content scripts on right-click (avoids cross-frame query issues)
+let pendingText = '';
+let pendingTabId = null;
+
+// Handle context menu click
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  console.log('[BenVoice BG] Context menu clicked', { menuItemId: info.menuItemId, tabId: tab?.id, hasPendingText: !!pendingText });
   if (info.menuItemId === 'benvoice-rewrite') {
     handleContextMenuRewrite(info, tab);
   }
 });
 
 async function handleContextMenuRewrite(info, tab) {
-  // First, ask the content script for the selected text (captures selection state)
-  let selectedText = '';
-  try {
-    const response = await chrome.tabs.sendMessage(tab.id, { action: 'getSelectedText' });
-    selectedText = response?.text || '';
-  } catch (e) {
-    // Content script not loaded or no response
-  }
+  // Use the text that the content script proactively sent on right-click mousedown
+  const selectedText = (pendingTabId === tab.id) ? pendingText : '';
+  console.log('[BenVoice BG] Using cached text, length:', selectedText.length);
+
+  // Clear cache
+  pendingText = '';
+  pendingTabId = null;
 
   if (!selectedText) {
+    console.warn('[BenVoice BG] No text selected');
     chrome.tabs.sendMessage(tab.id, {
       action: 'showError',
       error: 'No text selected. Select text in a text field, then right-click.'
-    }).catch(() => {});
+    }).catch((e) => console.error('[BenVoice BG] showError failed:', e.message));
     return;
   }
 
   try {
+    console.log('[BenVoice BG] Showing loading overlay');
     chrome.tabs.sendMessage(tab.id, { action: 'showLoading' }).catch(() => {});
+    console.log('[BenVoice BG] Calling Azure API...');
     const rewritten = await rewriteText(selectedText);
+    console.log('[BenVoice BG] API returned:', JSON.stringify(rewritten).substring(0, 100));
     chrome.tabs.sendMessage(tab.id, { action: 'replaceText', text: rewritten }).catch(() => {});
   } catch (err) {
+    console.error('[BenVoice BG] Rewrite failed:', err.message);
     chrome.tabs.sendMessage(tab.id, { action: 'showError', error: err.message }).catch(() => {});
   }
 }
 
-// Handle messages from content script (keyboard shortcut)
+// Handle messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[BenVoice BG] Message received:', message.action, 'from tab:', sender.tab?.id);
+
+  if (message.action === 'cacheText') {
+    // Content script sends selected text on right-click, before context menu fires
+    pendingText = message.text;
+    pendingTabId = sender.tab?.id;
+    console.log('[BenVoice BG] Cached text from tab', pendingTabId, ':', JSON.stringify(pendingText).substring(0, 80));
+    return false;
+  }
+
   if (message.action === 'rewrite') {
     rewriteText(message.text)
       .then(rewritten => sendResponse({ success: true, text: rewritten }))
@@ -87,6 +106,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function rewriteText(text) {
   const config = await getConfig();
+  console.log('[BenVoice BG] Config loaded:', { endpoint: config.endpoint, deployment: config.deployment, hasKey: !!config.apiKey, apiVersion: config.apiVersion });
 
   if (!config.apiKey) {
     throw new Error('API key not set. Click the BenVoice icon and enter your Azure OpenAI API key.');
